@@ -16,6 +16,7 @@ import time
 
 # Third-party libraries
 import numpy as np
+
 np.random.seed(0)
 random.seed(0)
 
@@ -92,7 +93,7 @@ class Network(object):
             if test_data:
                 print "Epoch {0}: {1} / {2}".format(
                     j, self.evaluate(test_data), n_test)
-                print "Completed in {0} s".format(time.time() - start_time)
+                print "Completed in {0} seconds".format(time.time() - start_time)
             else:
                 print "Epoch {0} complete".format(j)
 
@@ -104,29 +105,18 @@ class Network(object):
         # copy of self.biases and self.weights with zeros
         nabla_b = [np.zeros(b.shape) for b in self.biases]
         nabla_w = [np.zeros(w.shape) for w in self.weights]
-        for x, y in mini_batch:
-            # compute the gradients using back propogation
-            """
-            delta_nabla_b is \frac{\partial C_x}{\partial b^l_j} at each component
-            delta_nabla_w is \frac{\partial C_x}{\partial w^l_{jk}} at each component
-            """
-            delta_nabla_b, delta_nabla_w = self.backprop(x, y)
-            """
-            nabla_b and nabla_w store the summation of the total gradients
-            for all training examples in the dataset. These are later divided by
-            the number of examples in the dataset
-            """
-            nabla_b = [nb+dnb for nb, dnb in zip(nabla_b, delta_nabla_b)]
-            nabla_w = [nw+dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
+        x, y = zip(*mini_batch)
+        x,y = np.array(x), np.array(y)
+        nabla_b, nabla_w = self.backprop(x, y)
         """
         m = len(mini_batch)
         eta = learning rate
         X_j = all training examples in current minibatch
         w_k -> w_k - \frac{\eta}{m}\sum_j \frac{\partial C_{X_j}}{\partial w_k}
         """
-        self.weights = [w-(eta/len(mini_batch))*nw
+        self.weights = [w-(eta/len(mini_batch))*np.sum(nw, axis = 0)
                         for w, nw in zip(self.weights, nabla_w)]
-        self.biases = [b-(eta/len(mini_batch))*nb
+        self.biases = [b-(eta/len(mini_batch))*np.sum(nb, axis = 0)
                        for b, nb in zip(self.biases, nabla_b)]
 
     def backprop(self, x, y):
@@ -134,19 +124,28 @@ class Network(object):
         gradient for the cost function C_x.  ``nabla_b`` and
         ``nabla_w`` are layer-by-layer lists of numpy arrays, similar
         to ``self.biases`` and ``self.weights``."""
-        nabla_b = [np.zeros(b.shape) for b in self.biases]
-        nabla_w = [np.zeros(w.shape) for w in self.weights]
+        #nabla_b = np.array([np.zeros(b.shape) for b in self.biases]*len(x))
+        #nabla_w = np.array([np.zeros(w.shape) for w in self.weights]*len(x))
+        nabla_b = []
+        nabla_w = []
         # feedforward
         activation = x
         # the activation for the first (input) layer is just the input
         activations = [x] # list to store all the activations, layer by layer
-        zs = [] # list to store all the z vectors, layer by layer
+        zs = []
         for b, w in zip(self.biases, self.weights):
+            w = np.repeat(w[np.newaxis, :, :], len(activation), axis = 0)
+            b = np.repeat(b[np.newaxis, :, :], len(activation), axis = 0)
+            #w = np.array([w]*len(activation))
+            #b = np.array([b]*len(activation))
+            nabla_b.append(np.zeros(b.shape))
+            nabla_w.append(np.zeros(w.shape))
             # iterate through the layers and calculate z and a
-            z = np.dot(w, activation)+b # of same dim as neurons in first hidden layer
+            z = np.matmul(w, activation)+b # of same dim as neurons in first hidden layer
             zs.append(z)
             activation = sigmoid(z)
             activations.append(activation)
+
         # backward pass
         # last layer delta is equal to 
         """
@@ -161,7 +160,7 @@ class Network(object):
         """
         \frac{\partial C}{\partial w^l_{jk}} = a^{l-1}_k \delta^l_j
         """
-        nabla_w[-1] = np.dot(delta, activations[-2].transpose())
+        nabla_w[-1] = np.matmul(delta, activations[-2].transpose(0, 2, 1))
         # Note that the variable l in the loop below is used a little
         # differently to the notation in Chapter 2 of the book.  Here,
         # l = 1 means the last layer of neurons, l = 2 is the
@@ -176,9 +175,10 @@ class Network(object):
             """
             \delta^l = ((w^{l+1}_{jk})^T \delta^{l+1}) \odot \sigma'(z^l)
             """
-            delta = np.dot(self.weights[-l+1].transpose(), delta) * sp
+            w = np.repeat(self.weights[-l + 1][np.newaxis, :, :], len(activations[-l+1]), axis = 0)
+            delta = np.matmul(w.transpose(0, 2, 1), delta) * sp
             nabla_b[-l] = delta
-            nabla_w[-l] = np.dot(delta, activations[-l-1].transpose())
+            nabla_w[-l] = np.matmul(delta, activations[-l-1].transpose(0, 2, 1))
         return (nabla_b, nabla_w)
 
     def evaluate(self, test_data):
